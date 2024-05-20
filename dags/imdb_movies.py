@@ -45,8 +45,17 @@ def movie_data_pipeline():
                 'target_table': target_table,
                 'source_table': source_table }
         )
+
+        drop_columns = PostgresOperator(
+            task_id='drop_columns',
+            postgres_conn_id='postgres',
+            sql='drop_columns.sql',
+            params={ 'schema': schema_name,
+                'table_name': target_table, 
+                'columns_to_drop' : ['facenumber_in_poster'] }
+        )
         
-        drop_duplicates
+        drop_duplicates >> drop_columns
 
         return target_table
 
