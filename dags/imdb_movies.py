@@ -62,8 +62,16 @@ def movie_data_pipeline():
             params={ 'schema': schema_name,
                 'table_name': target_table }
         )
+
+        fill_missing_values = PostgresOperator(
+            task_id='fill_missing_values',
+            postgres_conn_id='postgres',
+            sql='fill_missing_values.sql',
+            params={ 'schema': schema_name,
+                'table_name': target_table }
+        )
         
-        drop_duplicates >> drop_columns >> remove_null_terminating_char
+        drop_duplicates >> drop_columns >> remove_null_terminating_char >> fill_missing_values
 
         return target_table
 
