@@ -12,6 +12,7 @@ from airflow.providers.postgres.operators.postgres import PostgresOperator
     schedule_interval="@daily",
     start_date=datetime(2024, 4, 6),
     tags=["movie_data"],
+    template_searchpath="/usr/local/airflow/include/sql",
     catchup=False
 )
 def movie_data_pipeline():
@@ -30,7 +31,25 @@ def movie_data_pipeline():
         #     df.to_sql(table_name, con=conn, schema="imdb", if_exists='replace', index=False)
         print("<<<<<<<<<<<<<<<<<<<completed>>>>>>>>>>>>>>>>")
         return table_name
-            
+    
     movie_metadata = load_movie_data()
+            
+    @task_group(group_id='data_cleaning', tooltip='Data Cleaning Tasks')
+    def data_cleaning_group(source_table: str, target_table: str, schema_name: str):
+
+        drop_duplicates = PostgresOperator(
+            task_id='drop_duplicates',
+            postgres_conn_id='postgres',
+            sql='drop_duplicates.sql',
+            params={ 'schema': schema_name,
+                'target_table': target_table,
+                'source_table': source_table }
+        )
+        
+        drop_duplicates
+
+        return target_table
+
+    cleaned_movies = data_cleaning_group("movie_metadata", "cleaned_movies", "imdb")
 
 movie_data_pipeline_dag = movie_data_pipeline()
