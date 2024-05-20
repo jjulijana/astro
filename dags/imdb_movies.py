@@ -70,8 +70,16 @@ def movie_data_pipeline():
             params={ 'schema': schema_name,
                 'table_name': target_table }
         )
+
+        convert_to_int = PostgresOperator(
+            task_id='convert_to_int',
+            postgres_conn_id='postgres',
+            sql='convert_to_int.sql',
+            params={ 'schema': schema_name,
+                'table_name': target_table }
+        )
         
-        drop_duplicates >> drop_columns >> remove_null_terminating_char >> fill_missing_values
+        drop_duplicates >> drop_columns >> remove_null_terminating_char >> fill_missing_values >> convert_to_int
 
         return target_table
 
