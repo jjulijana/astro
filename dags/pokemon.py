@@ -1,32 +1,40 @@
 from airflow.decorators import dag, task
 from airflow import DAG
-from airflow.operators.python import PythonOperator
-from airflow.operators.bash import BashOperator
-from airflow.utils.task_group import TaskGroup
 
-from datetime import datetime
+from datetime import datetime, timedelta
 import requests
 import random
 
-with DAG(
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
+
+def create_session_with_retries():
+    session = requests.Session()
+    retries = Retry(total=5, backoff_factor=0.2, status_forcelist=[500, 502, 503, 504])
+    adapter = HTTPAdapter(max_retries=retries)
+    session.mount('http://', adapter)
+    session.mount('https://', adapter)
+    return session
+
+@dag(
     dag_id="poke_dag",
     start_date=datetime(2024, 4, 6),
     schedule_interval="@daily",
     catchup=False,
-    default_args={"owner": "Astro", "retries": 0},
+    default_args={"owner": "Astro", "retries": 5, "retry_delay": timedelta(minutes=5)},  # Using timedelta for retry_delay
     tags=["pokeapi"],
     doc_md=__doc__,
     render_template_as_native_obj=True,
-    params={
-        "n" : 5
-    }
-) as poke_dag:
+    params={"n": 5}
+)
+def poke_dag():
 
     @task
     def get_all_pokemons() -> list:
-        count = requests.get("https://pokeapi.co/api/v2/pokemon").json()["count"]
+        session = create_session_with_retries()
+        count = session.get("https://pokeapi.co/api/v2/pokemon").json()["count"]
 
-        response = requests.get(f'https://pokeapi.co/api/v2/pokemon?limit={count}')
+        response = session.get(f'https://pokeapi.co/api/v2/pokemon?limit={count}')
         results = response.json()["results"]
 
         print(f"Total number of pokemons: {count}")
@@ -41,11 +49,6 @@ with DAG(
     def get_pokemon_sample(pokemons: list[str], n: int = 5) -> list[str]:
         return random.sample(pokemons, n)
     
-
-    pokemons = get_all_pokemons()
-    pokemon_sample = get_pokemon_sample(pokemons, "{{ params.n }}")
-
-
     @task
     def get_poke_info(name: str) -> dict:
         poke = {}
@@ -70,18 +73,11 @@ with DAG(
         return poke
 
 
+    pokemons = get_all_pokemons()
+    pokemon_sample = get_pokemon_sample(pokemons, "{{ params.n }}")
     poke_info = get_poke_info.expand(name=pokemon_sample)
 
-
-    # save_to_file_command = """
-    # echo '{{ task_instance.xcom_pull(task_ids="get_all_pokemons") }}' > $AIRFLOW_HOME/output/pokemon_data.json
-    # if [ $? -eq 0 ]; then
-    #     echo "Pokémon data saved to file."
-    # else
-    #     echo "Error saving Pokémon data to file."
-    # fi
-    # """
-
+poke_dag = poke_dag()
 
     # get_pokemons_task = PythonOperator(
     #     task_id="get_all_pokemons",
@@ -106,11 +102,4 @@ with DAG(
             
     #         get_random_pokemon_task >> get_pokemon_info_task
 
-
-    # save_to_file_task = BashOperator(
-    #     task_id="save_to_file",
-    #     bash_command=save_to_file_command
-    # )
-    
-
-    # get_pokemons_task >> parallel_pokemon_tasks >> save_to_file_task
+    # get_pokemons_task >> parallel_pokemon_tasks 
