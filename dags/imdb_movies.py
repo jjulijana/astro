@@ -54,8 +54,16 @@ def movie_data_pipeline():
                 'table_name': target_table, 
                 'columns_to_drop' : ['facenumber_in_poster'] }
         )
+
+        remove_null_terminating_char = PostgresOperator(
+            task_id='remove_null_terminating_char',
+            postgres_conn_id='postgres',
+            sql='remove_null_terminating_char.sql',
+            params={ 'schema': schema_name,
+                'table_name': target_table }
+        )
         
-        drop_duplicates >> drop_columns
+        drop_duplicates >> drop_columns >> remove_null_terminating_char
 
         return target_table
 
